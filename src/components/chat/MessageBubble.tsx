@@ -2,6 +2,7 @@
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeSanitize from 'rehype-sanitize'
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant'
@@ -26,7 +27,7 @@ export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps
         ) : (
           <div className="text-sm prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
             {content ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                 {content}
               </ReactMarkdown>
             ) : isStreaming ? (

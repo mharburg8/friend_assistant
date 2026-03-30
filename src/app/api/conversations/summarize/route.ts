@@ -1,11 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { summarizeConversation } from '@/lib/claude/summarize'
+import { rateLimit, rateLimitResponse } from '@/lib/security/rate-limit'
+import { isValidUUID } from '@/lib/security/validate'
 
-/**
- * POST /api/conversations/summarize
- * Summarize a conversation into memory nodes.
- * Called when user navigates away or conversation goes idle.
- */
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -14,13 +11,22 @@ export async function POST(request: Request) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const { conversationId } = await request.json()
+  const rl = rateLimit(user.id, 'summarize')
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt)
 
-  if (!conversationId) {
-    return new Response('Missing conversationId', { status: 400 })
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return new Response('Invalid JSON', { status: 400 })
   }
 
-  // Verify ownership
+  const conversationId = (body as Record<string, unknown>).conversationId as string
+
+  if (!conversationId || !isValidUUID(conversationId)) {
+    return new Response('Invalid conversationId', { status: 400 })
+  }
+
   const { data: convo } = await supabase
     .from('conversations')
     .select('id')
@@ -34,7 +40,5 @@ export async function POST(request: Request) {
 
   await summarizeConversation(supabase, conversationId, user.id)
 
-  return new Response(JSON.stringify({ ok: true }), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return Response.json({ ok: true })
 }

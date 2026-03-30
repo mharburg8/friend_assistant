@@ -1,16 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { getClaudeClient, getModelId } from '@/lib/claude/client'
 import { getRelevantMemories, getCurrentPriorities, getUserProfile } from '@/lib/claude/memory'
+import { rateLimit, rateLimitResponse } from '@/lib/security/rate-limit'
 
-/**
- * GET /api/briefing
- * Generate a morning briefing for Mark.
- * Returns a streaming response with the briefing text.
- */
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+
+  const rl = rateLimit(user.id, 'briefing')
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt)
 
   const [profile, memories, priorities] = await Promise.all([
     getUserProfile(supabase, user.id),

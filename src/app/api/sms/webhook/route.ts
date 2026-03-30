@@ -1,19 +1,14 @@
-import { NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { getClaudeClient, getModelId } from '@/lib/claude/client'
 import { buildSystemPrompt } from '@/lib/claude/system-prompt'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getRelevantMemories, getCurrentPriorities, getUserProfile } from '@/lib/claude/memory'
+import { verifyTwilioSignature } from '@/lib/security/webhook'
+import { rateLimit, rateLimitResponse } from '@/lib/security/rate-limit'
+import { sanitizeString } from '@/lib/security/validate'
 
 const { MessagingResponse } = twilio.twiml
 
-/**
- * POST /api/sms/webhook
- * Twilio sends incoming SMS here. Claude responds via SMS.
- *
- * Setup: In Twilio console, set your phone number's webhook URL to:
- * https://your-domain.com/api/sms/webhook (POST)
- */
 export async function POST(request: Request) {
   const formData = await request.formData()
   const from = formData.get('From') as string
@@ -23,43 +18,36 @@ export async function POST(request: Request) {
     return new Response('Missing From or Body', { status: 400 })
   }
 
-  // Validate Twilio signature in production
-  if (process.env.TWILIO_AUTH_TOKEN && process.env.NODE_ENV === 'production') {
-    const signature = request.headers.get('x-twilio-signature') || ''
-    const url = process.env.NEXT_PUBLIC_APP_URL + '/api/sms/webhook'
-    const params: Record<string, string> = {}
-    formData.forEach((value, key) => {
-      params[key] = value as string
-    })
-
-    const isValid = twilio.validateRequest(
-      process.env.TWILIO_AUTH_TOKEN,
-      signature,
-      url,
-      params
-    )
-
-    if (!isValid) {
-      return new Response('Invalid signature', { status: 403 })
-    }
+  // Always verify Twilio signature
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+  if (!authToken) {
+    return new Response('Twilio not configured', { status: 503 })
   }
 
-  // Look up user by phone number (Mark's number stored in env)
-  const supabase = await createServiceClient()
+  const signature = request.headers.get('x-twilio-signature') || ''
+  const url = process.env.NEXT_PUBLIC_APP_URL + '/api/sms/webhook'
+  const params: Record<string, string> = {}
+  formData.forEach((value, key) => { params[key] = value as string })
 
-  // For now, we associate SMS with the owner's account
-  // In production, look up user by phone number in a users_phone table
+  if (!verifyTwilioSignature(authToken, signature, url, params)) {
+    return new Response('Invalid signature', { status: 403 })
+  }
+
+  // Rate limit by phone number
+  const rl = rateLimit(from, 'sms')
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt)
+
+  const supabase = await createServiceClient()
   const ownerUserId = process.env.ORACLE_OWNER_USER_ID
 
   if (!ownerUserId) {
     const twiml = new MessagingResponse()
-    twiml.message('ORACLE is not configured yet. Set ORACLE_OWNER_USER_ID.')
-    return new Response(twiml.toString(), {
-      headers: { 'Content-Type': 'text/xml' },
-    })
+    twiml.message('ORACLE is not configured yet.')
+    return new Response(twiml.toString(), { headers: { 'Content-Type': 'text/xml' } })
   }
 
-  // Find or create an SMS conversation
+  const sanitizedBody = sanitizeString(body, 1600)
+
   let { data: convo } = await supabase
     .from('conversations')
     .select('id')
@@ -81,20 +69,16 @@ export async function POST(request: Request) {
 
   if (!convo) {
     const twiml = new MessagingResponse()
-    twiml.message('Something went wrong creating the conversation.')
-    return new Response(twiml.toString(), {
-      headers: { 'Content-Type': 'text/xml' },
-    })
+    twiml.message('Something went wrong.')
+    return new Response(twiml.toString(), { headers: { 'Content-Type': 'text/xml' } })
   }
 
-  // Save incoming message
   await supabase.from('messages').insert({
     conversation_id: convo.id,
     role: 'user',
-    content: body,
+    content: sanitizedBody,
   })
 
-  // Load recent SMS messages for context
   const { data: recentMessages } = await supabase
     .from('messages')
     .select('role, content')
@@ -106,7 +90,6 @@ export async function POST(request: Request) {
     .reverse()
     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
-  // Build context
   const [profile, memories, priorities] = await Promise.all([
     getUserProfile(supabase, ownerUserId),
     getRelevantMemories(supabase, ownerUserId),
@@ -114,9 +97,8 @@ export async function POST(request: Request) {
   ])
 
   const systemPrompt = buildSystemPrompt({ profile, memories, mode: null, priorities })
-    + '\n\nYou are responding via SMS. Keep responses concise — under 300 characters when possible. No markdown formatting. Direct and conversational.'
+    + '\n\nResponding via SMS. Under 300 characters when possible. No markdown. Direct and conversational.'
 
-  // Get Claude's response
   const claude = getClaudeClient()
   const response = await claude.messages.create({
     model: getModelId('sonnet'),
@@ -129,7 +111,6 @@ export async function POST(request: Request) {
     ? response.content[0].text
     : 'I had trouble generating a response.'
 
-  // Save assistant response
   await supabase.from('messages').insert({
     conversation_id: convo.id,
     role: 'assistant',
@@ -139,18 +120,14 @@ export async function POST(request: Request) {
     tokens_out: response.usage.output_tokens,
   })
 
-  // Log the action
   await supabase.from('action_log').insert({
     user_id: ownerUserId,
     action: 'sms_response',
-    reasoning: `Responded to SMS from ${from}`,
+    reasoning: 'Responded to incoming SMS',
   })
 
-  // Respond via Twilio TwiML
   const twiml = new MessagingResponse()
   twiml.message(reply)
 
-  return new Response(twiml.toString(), {
-    headers: { 'Content-Type': 'text/xml' },
-  })
+  return new Response(twiml.toString(), { headers: { 'Content-Type': 'text/xml' } })
 }

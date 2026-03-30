@@ -2,87 +2,73 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getClaudeClient, getModelId } from '@/lib/claude/client'
 import { buildSystemPrompt } from '@/lib/claude/system-prompt'
 import { getRelevantMemories, getCurrentPriorities, getUserProfile } from '@/lib/claude/memory'
+import { verifyRetellWebhook } from '@/lib/security/webhook'
+import { rateLimit, rateLimitResponse } from '@/lib/security/rate-limit'
 
-/**
- * POST /api/voice/webhook
- * Retell AI sends conversation events here.
- *
- * Retell handles real-time voice (STT + TTS).
- * This webhook receives the user's transcribed speech,
- * sends it to Claude, and returns the response for TTS.
- *
- * Setup: In Retell dashboard, create an agent with:
- * - Webhook URL: https://your-domain.com/api/voice/webhook
- * - Response type: text
- */
 export async function POST(request: Request) {
-  const body = await request.json()
-
-  // Retell sends different event types
-  const { event, call } = body
-
-  // Verify Retell webhook (check API key header)
+  // Verify Retell webhook
   const retellApiKey = request.headers.get('x-retell-api-key')
-  if (process.env.RETELL_API_KEY && retellApiKey !== process.env.RETELL_API_KEY) {
+  if (!verifyRetellWebhook(retellApiKey)) {
     return new Response('Unauthorized', { status: 401 })
   }
 
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return new Response('Invalid JSON', { status: 400 })
+  }
+
+  const { event, call } = body
+
   if (event === 'call_started') {
-    return Response.json({
-      response: "Hey Mark. What's up?",
-    })
+    return Response.json({ response: "Hey Mark. What's up?" })
   }
 
   if (event === 'call_ended') {
-    // Save call summary to memory
-    if (call?.transcript && call.transcript.length > 0) {
+    if (call && typeof call === 'object' && (call as Record<string, unknown>).transcript) {
+      const callData = call as Record<string, unknown>
+      const transcript = callData.transcript as Array<{ role: string; content: string }>
       const supabase = await createServiceClient()
       const ownerUserId = process.env.ORACLE_OWNER_USER_ID
-      if (ownerUserId) {
-        const transcript = call.transcript
-          .map((t: { role: string; content: string }) => `${t.role}: ${t.content}`)
-          .join('\n')
-
-        // Save as a conversation
+      if (ownerUserId && Array.isArray(transcript)) {
         const { data: convo } = await supabase
           .from('conversations')
-          .insert({
-            user_id: ownerUserId,
-            title: 'Voice Call',
-            mode: null,
-          })
+          .insert({ user_id: ownerUserId, title: 'Voice Call', mode: null })
           .select('id')
           .single()
 
         if (convo) {
-          const messageRows = call.transcript.map((t: { role: string; content: string }) => ({
+          const messageRows = transcript.map((t) => ({
             conversation_id: convo.id,
             role: t.role === 'agent' ? 'assistant' : 'user',
-            content: t.content,
+            content: typeof t.content === 'string' ? t.content.slice(0, 10000) : '',
           }))
-
           await supabase.from('messages').insert(messageRows)
         }
 
         await supabase.from('action_log').insert({
           user_id: ownerUserId,
           action: 'voice_call_completed',
-          reasoning: `Voice call ended. ${call.transcript.length} exchanges.`,
+          reasoning: `Voice call ended. ${transcript.length} exchanges.`,
         })
       }
     }
-
     return Response.json({ ok: true })
   }
 
-  // Main conversation turn — user said something, Claude responds
+  // Conversation turn
   if (event === 'call_analyzed' || body.transcript) {
-    const transcript = body.transcript || call?.transcript || []
+    const transcript = (body.transcript || (call as Record<string, unknown>)?.transcript || []) as Array<{ role: string; content: string }>
     const lastUtterance = transcript[transcript.length - 1]
 
     if (!lastUtterance || lastUtterance.role === 'agent') {
       return Response.json({ response: '' })
     }
+
+    // Rate limit
+    const rl = rateLimit('voice', 'voice')
+    if (!rl.allowed) return Response.json({ response: 'Give me a moment.' })
 
     const supabase = await createServiceClient()
     const ownerUserId = process.env.ORACLE_OWNER_USER_ID
@@ -91,13 +77,11 @@ export async function POST(request: Request) {
       return Response.json({ response: "I'm not configured yet." })
     }
 
-    // Build messages from transcript
-    const messages = transcript.map((t: { role: string; content: string }) => ({
-      role: t.role === 'agent' ? 'assistant' as const : 'user' as const,
-      content: t.content,
+    const messages = transcript.map((t) => ({
+      role: (t.role === 'agent' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: typeof t.content === 'string' ? t.content.slice(0, 5000) : '',
     }))
 
-    // Build context
     const [profile, memories, priorities] = await Promise.all([
       getUserProfile(supabase, ownerUserId),
       getRelevantMemories(supabase, ownerUserId),
@@ -105,7 +89,7 @@ export async function POST(request: Request) {
     ])
 
     const systemPrompt = buildSystemPrompt({ profile, memories, mode: null, priorities })
-      + '\n\nYou are speaking via voice call. Keep responses conversational and brief — 1-3 sentences max. No markdown, no lists, no formatting. Talk like a real person.'
+      + '\n\nSpeaking via voice call. 1-3 sentences max. No markdown, no lists. Talk like a real person.'
 
     const claude = getClaudeClient()
     const response = await claude.messages.create({

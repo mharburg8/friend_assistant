@@ -12,7 +12,7 @@ async function getPool() {
     const { Pool } = await import('pg')
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
       max: 10,
     })
   }
@@ -38,10 +38,16 @@ export async function queryAll(text: string, params?: any[]) {
  * Execute a query as a specific user (sets RLS context).
  */
 export async function queryAsUser(userId: string, text: string, params?: any[]) {
+  // Validate UUID format to prevent SQL injection
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuidRegex.test(userId)) {
+    throw new Error('Invalid user ID format')
+  }
+
   const p = await getPool()
   const client = await p.connect()
   try {
-    await client.query(`SET LOCAL app.current_user_id = '${userId}'`)
+    await client.query('SET LOCAL app.current_user_id = $1', [userId])
     const result = await client.query(text, params)
     return result.rows
   } finally {

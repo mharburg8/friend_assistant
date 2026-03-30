@@ -2,20 +2,44 @@ import { createClient } from '@/lib/supabase/server'
 import { getClaudeClient, getModelId } from '@/lib/claude/client'
 import { buildSystemPrompt } from '@/lib/claude/system-prompt'
 import { getRelevantMemories, getCurrentPriorities, getUserProfile } from '@/lib/claude/memory'
+import { validateChatMessages, isValidUUID, isValidMode } from '@/lib/security/validate'
+import { rateLimit, rateLimitResponse } from '@/lib/security/rate-limit'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
 
-  // Auth check
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const { messages, conversationId, mode } = await request.json()
+  // Rate limit
+  const rl = rateLimit(user.id, 'chat')
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt)
+
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return new Response('Invalid JSON', { status: 400 })
+  }
+
+  const { messages: rawMessages, conversationId, mode } = body as Record<string, unknown>
+
+  // Validate input
+  const messages = validateChatMessages(rawMessages)
+  if (!messages) {
+    return new Response('Invalid messages format', { status: 400 })
+  }
+  if (conversationId && !isValidUUID(conversationId as string)) {
+    return new Response('Invalid conversation ID', { status: 400 })
+  }
+  if (!isValidMode(mode as string | null)) {
+    return new Response('Invalid mode', { status: 400 })
+  }
 
   // Get or create conversation
-  let convoId = conversationId
+  let convoId = conversationId as string | undefined
   if (!convoId) {
     const { data: convo, error } = await supabase
       .from('conversations')
@@ -49,26 +73,23 @@ export async function POST(request: Request) {
   const systemPrompt = buildSystemPrompt({
     profile,
     memories,
-    mode,
+    mode: mode as string | null,
     priorities,
   })
 
-  // Stream from Claude
   const claude = getClaudeClient()
-
   const sonnetModel = getModelId('sonnet')
 
   const stream = await claude.messages.stream({
     model: sonnetModel,
     max_tokens: 4096,
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-    messages: messages.map((m: { role: string; content: string }) => ({
+    messages: messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     })),
   })
 
-  // Create a ReadableStream that sends chunks as they arrive
   const encoder = new TextEncoder()
   let fullResponse = ''
 
@@ -83,10 +104,8 @@ export async function POST(request: Request) {
           }
         }
 
-        // Get final message for token usage
         const finalMessage = await stream.finalMessage()
 
-        // Save assistant message
         await supabase.from('messages').insert({
           conversation_id: convoId,
           role: 'assistant',
@@ -96,7 +115,6 @@ export async function POST(request: Request) {
           tokens_out: finalMessage.usage.output_tokens,
         })
 
-        // Auto-title the conversation if it's new
         if (!conversationId && fullResponse.length > 0) {
           const titleResponse = await claude.messages.create({
             model: getModelId('haiku'),
@@ -104,7 +122,7 @@ export async function POST(request: Request) {
             messages: [
               {
                 role: 'user',
-                content: `Generate a very short title (3-6 words, no quotes) for this conversation:\nUser: ${lastUserMessage.content}\nAssistant: ${fullResponse.slice(0, 200)}`,
+                content: `Generate a very short title (3-6 words, no quotes) for this conversation:\nUser: ${lastUserMessage.content.slice(0, 200)}\nAssistant: ${fullResponse.slice(0, 200)}`,
               },
             ],
           })
@@ -121,7 +139,7 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, conversationId: convoId })}\n\n`))
         controller.close()
       } catch (err) {
-        console.error('Stream error:', err)
+        console.error('Stream error:', (err as Error).message)
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed' })}\n\n`))
         controller.close()
       }
@@ -131,8 +149,9 @@ export async function POST(request: Request) {
   return new Response(readable, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+      'Cache-Control': 'no-cache, no-store',
+      'Connection': 'keep-alive',
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 }

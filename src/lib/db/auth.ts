@@ -36,7 +36,7 @@ async function verifyToken(token: string): Promise<{ userId: string } | null> {
 
 export async function signUp(email: string, password: string) {
   const bcrypt = await import('bcryptjs')
-  const hash = await bcrypt.hash(password, 12)
+  const hash = await bcrypt.hash(password, 14)
 
   try {
     const result = await queryOne(
@@ -65,8 +65,8 @@ export async function signIn(email: string, password: string) {
   const cookieStore = await cookies()
   cookieStore.set('oracle-session', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'strict',
     maxAge: 7 * 24 * 60 * 60,
     path: '/',
   })
