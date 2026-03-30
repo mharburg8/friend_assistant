@@ -27,19 +27,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch — network first, cache fallback for navigation
+// Fetch — network first, cache fallback
 self.addEventListener('fetch', (event) => {
   const { request } = event
 
-  // Skip non-GET and API requests
-  if (request.method !== 'GET' || request.url.includes('/api/')) {
+  // Skip non-GET, API requests, and navigation requests (let the browser handle redirects)
+  if (request.method !== 'GET' || request.url.includes('/api/') || request.mode === 'navigate') {
     return
   }
 
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache successful responses
         if (response.status === 200) {
           const responseClone = response.clone()
           caches.open(CACHE_NAME).then((cache) => {
@@ -49,13 +48,8 @@ self.addEventListener('fetch', (event) => {
         return response
       })
       .catch(() => {
-        // Offline — serve from cache
         return caches.match(request).then((cached) => {
           if (cached) return cached
-          // For navigation requests, return the cached home page
-          if (request.mode === 'navigate') {
-            return caches.match('/')
-          }
           return new Response('Offline', { status: 503 })
         })
       })
