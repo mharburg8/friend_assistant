@@ -16,7 +16,7 @@
 
 set -e
 
-DOMAIN="${ORACLE_DOMAIN:-oracle.harburgautomation.com}"
+DOMAIN="oracle.harburgautomation.com"
 EMAIL="${CERTBOT_EMAIL:-HarburgMark@gmail.com}"
 
 echo "=== ORACLE Deployment ==="
