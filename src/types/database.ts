@@ -3,11 +3,23 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 export type MemoryType = 'summary' | 'fact' | 'sentiment' | 'profile_update'
 export type ActionStatus = 'pending' | 'completed' | 'failed' | 'rejected'
 
+export interface Project {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  color: string
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+}
+
 export interface Conversation {
   id: string
   user_id: string
   title: string | null
   mode: Mode | null
+  project_id: string | null
   created_at: string
   updated_at: string
   archived_at: string | null

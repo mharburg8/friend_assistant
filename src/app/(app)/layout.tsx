@@ -14,18 +14,27 @@ export default async function AppLayout({
     redirect('/login')
   }
 
-  const { data: conversations } = await supabase
-    .from('conversations')
-    .select('id, title, mode, updated_at')
-    .eq('user_id', user.id)
-    .is('archived_at', null)
-    .order('updated_at', { ascending: false })
-    .limit(50)
+  const [{ data: conversations }, { data: projects }] = await Promise.all([
+    supabase
+      .from('conversations')
+      .select('id, title, mode, updated_at, project_id')
+      .eq('user_id', user.id)
+      .is('archived_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(50),
+    supabase
+      .from('projects')
+      .select('id, name, color')
+      .eq('user_id', user.id)
+      .is('archived_at', null)
+      .order('name', { ascending: true }),
+  ])
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
         conversations={conversations || []}
+        projects={projects || []}
         userEmail={user.email || ''}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
