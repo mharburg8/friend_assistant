@@ -14,6 +14,16 @@ This is not a customer service interaction. This is an ongoing relationship with
 
 This is a friendship, not a service relationship.`
 
+const DOCUMENT_INSTRUCTION = `When the user asks you to create a document, report, proposal, letter, spreadsheet, presentation, or any formatted output, wrap your document content in tags like this:
+
+[DOCUMENT: filename.ext]
+(your markdown content here)
+[/DOCUMENT]
+
+Supported formats: .md (markdown), .pdf (PDF), .docx (Word), .xlsx (Excel), .pptx (PowerPoint).
+For Excel, use markdown tables or CSV format. For PowerPoint, use ## headings to separate slides.
+Include a brief message before the tag explaining what you created. The document will appear as a downloadable attachment.`
+
 const MODE_CONTEXT: Record<string, string> = {
   alab: 'Mark is in A:LAB consulting mode — working with Robbie and Rebecca. Focus on prep, deliverables, and communication.',
   work: 'Mark is in Harburg Automation mode — clients, automation builds, business operations.',
@@ -30,6 +40,7 @@ export function buildSystemPrompt(options: {
   priorities: string[]
 }): string {
   const parts: string[] = [IDENTITY]
+  parts.push(DOCUMENT_INSTRUCTION)
 
   // User profile
   if (options.profile) {
