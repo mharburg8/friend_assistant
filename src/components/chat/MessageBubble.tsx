@@ -3,14 +3,17 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
+import { AttachmentDisplay } from './AttachmentDisplay'
+import type { Attachment } from '@/types/database'
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant'
   content: string
   isStreaming?: boolean
+  attachments?: Attachment[]
 }
 
-export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps) {
+export function MessageBubble({ role, content, isStreaming, attachments }: MessageBubbleProps) {
   const isUser = role === 'user'
 
   return (
@@ -34,6 +37,10 @@ export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps
               <span className="inline-block w-2 h-4 bg-foreground/50 animate-pulse" />
             ) : null}
           </div>
+        )}
+
+        {attachments && attachments.length > 0 && (
+          <AttachmentDisplay attachments={attachments} />
         )}
       </div>
     </div>

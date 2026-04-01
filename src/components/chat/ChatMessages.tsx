@@ -3,9 +3,10 @@
 import { useEffect, useRef } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './MessageBubble'
+import type { Attachment } from '@/types/database'
 
 interface ChatMessagesProps {
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+  messages: Array<{ role: 'user' | 'assistant'; content: string; attachments?: Attachment[] }>
   isStreaming: boolean
 }
 
@@ -38,6 +39,7 @@ export function ChatMessages({ messages, isStreaming }: ChatMessagesProps) {
             role={message.role}
             content={message.content}
             isStreaming={isStreaming && i === messages.length - 1 && message.role === 'assistant'}
+            attachments={message.attachments}
           />
         ))}
         <div ref={bottomRef} />
