@@ -74,3 +74,15 @@ export interface Priority {
   completed: boolean
   created_at: string
 }
+
+export interface Attachment {
+  id: string
+  message_id: string | null
+  conversation_id: string
+  user_id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  s3_key: string
+  created_at: string
+}
