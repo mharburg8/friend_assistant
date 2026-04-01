@@ -31,6 +31,8 @@ const DEFAULTS: Record<string, RateLimitConfig> = {
   signal: { maxRequests: 30, windowMs: 60 * 1000 },
   priorities: { maxRequests: 20, windowMs: 60 * 1000 },
   summarize: { maxRequests: 10, windowMs: 60 * 1000 },
+  'files-upload': { maxRequests: 10, windowMs: 60 * 1000 },
+  'files-download': { maxRequests: 60, windowMs: 60 * 1000 },
   default: { maxRequests: 60, windowMs: 60 * 1000 },
 }
 
