@@ -9,7 +9,7 @@ const s3 = new S3Client({
   },
 })
 
-const BUCKET = process.env.AWS_S3_BUCKET || 'oracle-attachments-prod'
+const BUCKET = process.env.AWS_S3_BUCKET || 'oracle-844649515153-us-east-2-an'
 
 export async function getPresignedUploadUrl(
   s3Key: string,
