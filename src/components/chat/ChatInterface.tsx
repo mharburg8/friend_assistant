@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation'
 import { ChatMessages } from './ChatMessages'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '@/components/layout/ModeSelector'
-import type { Mode } from '@/types/database'
+import type { Mode, Attachment } from '@/types/database'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  attachments?: Attachment[]
 }
 
 interface ChatInterfaceProps {
@@ -30,7 +31,6 @@ export function ChatInterface({
   const router = useRouter()
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Auto-summarize when leaving conversation
   useEffect(() => {
     return () => {
       if (conversationId && messages.length >= 4) {
@@ -43,7 +43,7 @@ export function ChatInterface({
     }
   }, [conversationId, messages.length])
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, attachmentIds: string[] = []) => {
     if (isStreaming) return
 
     const userMessage: ChatMessage = { role: 'user', content }
@@ -60,9 +60,10 @@ export function ChatInterface({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages,
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
           conversationId,
           mode,
+          attachmentIds,
         }),
         signal: abortControllerRef.current.signal,
       })
@@ -98,6 +99,19 @@ export function ChatInterface({
               if (data.conversationId && data.conversationId !== conversationId) {
                 setConversationId(data.conversationId)
                 router.replace(`/chat/${data.conversationId}`, { scroll: false })
+              }
+              if (data.generatedAttachments?.length > 0) {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  const last = updated[updated.length - 1]
+                  if (last.role === 'assistant') {
+                    updated[updated.length - 1] = {
+                      ...last,
+                      attachments: data.generatedAttachments,
+                    }
+                  }
+                  return updated
+                })
               }
               break
             }
@@ -155,6 +169,7 @@ export function ChatInterface({
         onStop={handleStop}
         isStreaming={isStreaming}
         disabled={isStreaming}
+        conversationId={conversationId}
       />
     </div>
   )
