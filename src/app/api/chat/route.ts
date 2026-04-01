@@ -90,7 +90,8 @@ export async function POST(request: Request) {
   }
 
   // Build Claude content blocks from attachments
-  const contentBlocks: Array<{ type: string; [key: string]: unknown }> = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contentBlocks: any[] = []
 
   if (validAttachmentIds.length > 0) {
     const { data: attachments } = await supabase
@@ -185,7 +186,8 @@ export async function POST(request: Request) {
     model: sonnetModel,
     max_tokens: 4096,
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-    messages: claudeMessages,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: claudeMessages as any,
   })
 
   const encoder = new TextEncoder()
@@ -222,7 +224,7 @@ export async function POST(request: Request) {
               await fetch(uploadUrl, {
                 method: 'PUT',
                 headers: { 'Content-Type': mimeType },
-                body: buffer,
+                body: new Uint8Array(buffer),
               })
 
               // Save attachment record (use service-level insert since RLS requires auth.uid())

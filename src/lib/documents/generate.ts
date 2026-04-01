@@ -32,10 +32,12 @@ async function generatePdf(markdown: string): Promise<{ buffer: Buffer; mimeType
   const chromium = await import('@sparticuz/chromium')
   const puppeteer = await import('puppeteer-core')
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chr = chromium.default as any
   const browser = await puppeteer.default.launch({
-    args: chromium.default.args,
-    defaultViewport: chromium.default.defaultViewport,
-    executablePath: await chromium.default.executablePath(),
+    args: chr.args,
+    defaultViewport: chr.defaultViewport ?? { width: 800, height: 600 },
+    executablePath: await chr.executablePath(),
     headless: true,
   })
 
@@ -200,7 +202,7 @@ async function generatePptx(content: string): Promise<{ buffer: Buffer; mimeType
     }
   }
 
-  if (pptx.slides.length === 0) {
+  if ((pptx as unknown as { slides: unknown[] }).slides.length === 0) {
     const slide = pptx.addSlide()
     slide.addText(content.slice(0, 2000), {
       x: 0.5, y: 0.5, w: 9, h: 6,
