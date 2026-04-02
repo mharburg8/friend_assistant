@@ -43,7 +43,7 @@ export function AttachmentDisplay({ attachments }: AttachmentDisplayProps) {
   }
 
   async function handleDownload(attachment: Attachment) {
-    const url = await getDownloadUrl(attachment)
+    const url = attachment.inline_data || await getDownloadUrl(attachment)
     const a = document.createElement('a')
     a.href = url
     a.download = attachment.file_name

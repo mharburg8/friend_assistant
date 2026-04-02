@@ -218,38 +218,57 @@ export async function POST(request: Request) {
         const generatedAttachments: Attachment[] = []
 
         if (documents.length > 0) {
+          const hasS3 = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+
           for (const doc of documents) {
             try {
               const format = getDocumentFormat(doc.fileName)
               const { buffer, mimeType } = await generateDocument(doc.content, format)
-
               const fileId = randomUUID()
-              const s3Key = `${user.id}/${convoId}/generated/${fileId}-${doc.fileName}`
 
-              // Upload to S3 via presigned URL
-              const uploadUrl = await getPresignedUploadUrl(s3Key, mimeType, buffer.length)
-              await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': mimeType },
-                body: new Uint8Array(buffer),
-              })
+              if (hasS3) {
+                const s3Key = `${user.id}/${convoId}/generated/${fileId}-${doc.fileName}`
 
-              // Save attachment record (use service-level insert since RLS requires auth.uid())
-              const { data: att } = await supabase
-                .from('attachments')
-                .insert({
+                // Upload to S3 via presigned URL
+                const uploadUrl = await getPresignedUploadUrl(s3Key, mimeType, buffer.length)
+                await fetch(uploadUrl, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': mimeType },
+                  body: new Uint8Array(buffer),
+                })
+
+                // Save attachment record
+                const { data: att } = await supabase
+                  .from('attachments')
+                  .insert({
+                    id: fileId,
+                    conversation_id: convoId,
+                    user_id: user.id,
+                    file_name: doc.fileName,
+                    file_type: mimeType,
+                    file_size: buffer.length,
+                    s3_key: s3Key,
+                  })
+                  .select('*')
+                  .single()
+
+                if (att) generatedAttachments.push(att as Attachment)
+              } else {
+                // No S3 — send as inline base64 download
+                const base64 = buffer.toString('base64')
+                generatedAttachments.push({
                   id: fileId,
-                  conversation_id: convoId,
+                  conversation_id: convoId!,
                   user_id: user.id,
                   file_name: doc.fileName,
                   file_type: mimeType,
                   file_size: buffer.length,
-                  s3_key: s3Key,
-                })
-                .select('*')
-                .single()
-
-              if (att) generatedAttachments.push(att as Attachment)
+                  s3_key: '',
+                  message_id: null,
+                  created_at: new Date().toISOString(),
+                  inline_data: `data:${mimeType};base64,${base64}`,
+                } as Attachment)
+              }
             } catch (err) {
               console.error(`Failed to generate document ${doc.fileName}:`, err)
             }

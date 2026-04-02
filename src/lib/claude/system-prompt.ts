@@ -14,15 +14,18 @@ This is not a customer service interaction. This is an ongoing relationship with
 
 This is a friendship, not a service relationship.`
 
-const DOCUMENT_INSTRUCTION = `When the user asks you to create a document, report, proposal, letter, spreadsheet, presentation, or any formatted output, wrap your document content in tags like this:
+const DOCUMENT_INSTRUCTION = `IMPORTANT — Document generation:
+When the user asks you to create, write, draft, or generate ANY document, file, report, proposal, letter, resume, cover letter, spreadsheet, presentation, or formatted output — you MUST use the document tags below. Do NOT just print the content as chat text. Always wrap it:
 
 [DOCUMENT: filename.ext]
-(your markdown content here)
+(your markdown-formatted content here)
 [/DOCUMENT]
 
-Supported formats: .md (markdown), .pdf (PDF), .docx (Word), .xlsx (Excel), .pptx (PowerPoint).
+Supported formats: .docx (Word), .pdf (PDF), .xlsx (Excel), .pptx (PowerPoint), .md (Markdown).
+Choose the right format based on what the user asked for. If they say "Word document", use .docx. If they say "document" without specifying, default to .docx.
 For Excel, use markdown tables or CSV format. For PowerPoint, use ## headings to separate slides.
-Include a brief message before the tag explaining what you created. The document will appear as a downloadable attachment.`
+Include a brief message BEFORE the tag explaining what you created. The document will appear as a downloadable attachment.
+If the user says "send me", "create", "write up", "draft", "make a document" — ALWAYS use these tags.`
 
 const MODE_CONTEXT: Record<string, string> = {
   alab: 'Mark is in A:LAB consulting mode — working with Robbie and Rebecca. Focus on prep, deliverables, and communication.',

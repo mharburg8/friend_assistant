@@ -85,4 +85,5 @@ export interface Attachment {
   file_size: number
   s3_key: string
   created_at: string
+  inline_data?: string
 }
