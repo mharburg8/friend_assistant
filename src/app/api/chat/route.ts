@@ -297,8 +297,9 @@ export async function POST(request: Request) {
         })}\n\n`))
         controller.close()
       } catch (err) {
-        console.error('Stream error:', (err as Error).message)
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed' })}\n\n`))
+        const error = err as Error
+        console.error('Stream error:', error.message, error.stack)
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed', detail: error.message })}\n\n`))
         controller.close()
       }
     },
