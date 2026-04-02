@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChatMessages } from './ChatMessages'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '@/components/layout/ModeSelector'
+import { ProjectSelector } from './ProjectSelector'
 import type { Mode, Attachment } from '@/types/database'
 
 interface ChatMessage {
@@ -17,12 +18,14 @@ interface ChatInterfaceProps {
   conversationId?: string
   initialMessages?: ChatMessage[]
   mode?: string | null
+  projectId?: string | null
 }
 
 export function ChatInterface({
   conversationId: initialConversationId,
   initialMessages = [],
   mode: initialMode = null,
+  projectId: initialProjectId = null,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -162,6 +165,7 @@ export function ChatInterface({
     <div className="flex flex-col h-full">
       <div className="border-b px-4 py-2 flex items-center justify-between">
         <ModeSelector currentMode={mode} onModeChange={setMode} />
+        <ProjectSelector conversationId={conversationId} currentProjectId={initialProjectId} />
       </div>
       <ChatMessages messages={messages} isStreaming={isStreaming} />
       <ChatInput

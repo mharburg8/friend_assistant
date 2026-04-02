@@ -37,6 +37,7 @@ export default async function ConversationPage({
       conversationId={id}
       initialMessages={formattedMessages}
       mode={conversation.mode}
+      projectId={conversation.project_id}
     />
   )
 }

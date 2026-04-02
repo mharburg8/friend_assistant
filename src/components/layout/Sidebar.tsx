@@ -109,7 +109,11 @@ export function Sidebar({ conversations, projects = [], userEmail }: SidebarProp
 
   async function createProject() {
     if (!newProjectName.trim()) return
-    await supabase.from('projects').insert({ name: newProjectName.trim() })
+    await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newProjectName.trim() }),
+    })
     setNewProjectName('')
     setCreatingProject(false)
     router.refresh()
