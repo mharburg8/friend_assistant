@@ -1,4 +1,4 @@
-const CACHE_NAME = 'oracle-v1'
+const CACHE_NAME = 'oracle-v2'
 const STATIC_ASSETS = [
   '/',
   '/login',
@@ -31,8 +31,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
 
-  // Skip non-GET, API requests, and navigation requests (let the browser handle redirects)
-  if (request.method !== 'GET' || request.url.includes('/api/') || request.mode === 'navigate') {
+  // Skip non-GET, API requests, navigation, and non-http(s) schemes
+  if (
+    request.method !== 'GET' ||
+    request.url.includes('/api/') ||
+    request.mode === 'navigate' ||
+    !request.url.startsWith('http')
+  ) {
     return
   }
 

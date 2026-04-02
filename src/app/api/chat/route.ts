@@ -186,7 +186,7 @@ export async function POST(request: Request) {
   try {
     stream = await claude.messages.stream({
       model: sonnetModel,
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages: claudeMessages as any,
