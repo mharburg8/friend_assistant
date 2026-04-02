@@ -9,6 +9,7 @@ import { getFileCategory } from '@/lib/s3/file-types'
 import { extractTextFromFile } from '@/lib/s3/extract-text'
 import { parseDocumentTags, getDocumentFormat } from '@/lib/documents/parse-tags'
 import { generateDocument } from '@/lib/documents/generate'
+import { tokenizeMessages, detokenizePII, resetTokenCounter } from '@/lib/security/pii-tokenizer'
 import { randomUUID } from 'crypto'
 import type { Attachment } from '@/types/database'
 
@@ -165,9 +166,13 @@ export async function POST(request: Request) {
   const claude = getClaudeClient()
   const sonnetModel = getModelId('sonnet')
 
+  // Tokenize PII before sending to Claude
+  resetTokenCounter()
+  const { messages: tokenizedMsgs, tokenMap: piiTokenMap } = tokenizeMessages(messages)
+
   // Build messages with content blocks for the last user message
-  const claudeMessages = messages.map((m, i) => {
-    if (i === messages.length - 1 && m.role === 'user' && contentBlocks.length > 0) {
+  const claudeMessages = tokenizedMsgs.map((m, i) => {
+    if (i === tokenizedMsgs.length - 1 && m.role === 'user' && contentBlocks.length > 0) {
       return {
         role: 'user' as const,
         content: [
@@ -199,16 +204,42 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder()
   let fullResponse = ''
+  let lastSentLength = 0
+  const hasPII = Object.keys(piiTokenMap).length > 0
 
   const readable = new ReadableStream({
     async start(controller) {
       try {
         for await (const event of stream) {
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            const text = event.delta.text
-            fullResponse += text
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text, conversationId: convoId })}\n\n`))
+            fullResponse += event.delta.text
+
+            if (hasPII) {
+              // Detokenize the full response, then send only the new delta
+              // Wait for complete tokens (don't send partial [...] brackets)
+              const openBracket = fullResponse.lastIndexOf('[')
+              const closeBracket = fullResponse.lastIndexOf(']')
+              const safeEnd = (openBracket > closeBracket) ? openBracket : fullResponse.length
+              const safeText = detokenizePII(fullResponse.slice(0, safeEnd), piiTokenMap)
+              if (safeText.length > lastSentLength) {
+                const delta = safeText.slice(lastSentLength)
+                lastSentLength = safeText.length
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta, conversationId: convoId })}\n\n`))
+              }
+            } else {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: event.delta.text, conversationId: convoId })}\n\n`))
+            }
           }
+        }
+
+        // Flush any remaining detokenized text
+        if (hasPII) {
+          const finalText = detokenizePII(fullResponse, piiTokenMap)
+          if (finalText.length > lastSentLength) {
+            const delta = finalText.slice(lastSentLength)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: delta, conversationId: convoId })}\n\n`))
+          }
+          fullResponse = finalText
         }
 
         const finalMessage = await stream.finalMessage()
