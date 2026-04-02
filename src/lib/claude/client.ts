@@ -39,8 +39,8 @@ export function getModelId(logical: 'sonnet' | 'haiku'): string {
 
   const models = {
     sonnet: isBedrock
-      ? 'us.anthropic.claude-sonnet-4-6-20250415-v1:0'
-      : 'claude-sonnet-4-6-20250415',
+      ? 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+      : 'claude-sonnet-4-20250514',
     haiku: isBedrock
       ? 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
       : 'claude-haiku-4-5-20251001',

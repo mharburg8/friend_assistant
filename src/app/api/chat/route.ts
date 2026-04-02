@@ -182,13 +182,20 @@ export async function POST(request: Request) {
     }
   })
 
-  const stream = await claude.messages.stream({
-    model: sonnetModel,
-    max_tokens: 4096,
-    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    messages: claudeMessages as any,
-  })
+  let stream
+  try {
+    stream = await claude.messages.stream({
+      model: sonnetModel,
+      max_tokens: 4096,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: claudeMessages as any,
+    })
+  } catch (err) {
+    const error = err as Error
+    console.error('Claude API error:', error.message)
+    return new Response(JSON.stringify({ error: 'Claude API failed', detail: error.message }), { status: 502 })
+  }
 
   const encoder = new TextEncoder()
   let fullResponse = ''
