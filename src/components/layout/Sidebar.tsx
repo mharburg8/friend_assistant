@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -61,7 +61,8 @@ const MODE_COLORS: Record<string, string> = {
 }
 
 export function Sidebar({ conversations, projects = [], userEmail }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(['unassigned']))
   const [creatingProject, setCreatingProject] = useState(false)
@@ -69,6 +70,28 @@ export function Sidebar({ conversations, projects = [], userEmail }: SidebarProp
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+
+  // Detect mobile and auto-collapse
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (mobile) setCollapsed(true)
+      else setCollapsed(false)
+    }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Auto-close sidebar on mobile when navigating
+  useEffect(() => {
+    if (isMobile) setCollapsed(true)
+  }, [pathname, isMobile])
+
+  const closeMobile = useCallback(() => {
+    if (isMobile) setCollapsed(true)
+  }, [isMobile])
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -152,6 +175,7 @@ export function Sidebar({ conversations, projects = [], userEmail }: SidebarProp
       >
         <Link
           href={`/chat/${convo.id}`}
+          onClick={closeMobile}
           className="flex-1 flex items-center gap-2 px-2 py-1.5 min-w-0"
         >
           {convo.mode && (
@@ -189,14 +213,22 @@ export function Sidebar({ conversations, projects = [], userEmail }: SidebarProp
   }
 
   return (
-    <div className="w-72 border-r bg-card flex flex-col">
+    <>
+      {/* Mobile backdrop */}
+      {isMobile && !collapsed && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setCollapsed(true)}
+        />
+      )}
+      <div className={`${isMobile ? 'fixed inset-y-0 left-0 z-50' : ''} w-72 border-r bg-card flex flex-col`}>
       {/* Header */}
       <div className="p-3 flex items-center justify-between">
-        <Link href="/dashboard" className="font-semibold text-sm tracking-wide">
+        <Link href="/dashboard" onClick={closeMobile} className="font-semibold text-sm tracking-wide">
           ORACLE
         </Link>
         <div className="flex gap-1">
-          <Link href="/chat">
+          <Link href="/chat" onClick={closeMobile}>
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <MessageSquarePlus className="h-4 w-4" />
             </Button>
@@ -341,5 +373,6 @@ export function Sidebar({ conversations, projects = [], userEmail }: SidebarProp
         </DropdownMenu>
       </div>
     </div>
+    </>
   )
 }
