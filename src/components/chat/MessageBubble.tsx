@@ -13,9 +13,10 @@ interface MessageBubbleProps {
   content: string
   isStreaming?: boolean
   attachments?: Attachment[]
+  screenshot?: string
 }
 
-export function MessageBubble({ role, content, isStreaming, attachments }: MessageBubbleProps) {
+export function MessageBubble({ role, content, isStreaming, attachments, screenshot }: MessageBubbleProps) {
   const isUser = role === 'user'
   const [copied, setCopied] = useState(false)
 
@@ -49,6 +50,13 @@ export function MessageBubble({ role, content, isStreaming, attachments }: Messa
                 <span className="w-2 h-2 rounded-full bg-foreground/50 animate-bounce [animation-delay:300ms]" />
               </div>
             ) : null}
+          </div>
+        )}
+
+        {screenshot && (
+          <div className="mt-2 rounded-lg overflow-hidden border">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={screenshot} alt="Computer screenshot" className="w-full h-auto" />
           </div>
         )}
 

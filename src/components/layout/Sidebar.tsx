@@ -109,14 +109,23 @@ export function Sidebar({ conversations, projects = [], userEmail }: SidebarProp
 
   async function createProject() {
     if (!newProjectName.trim()) return
-    await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newProjectName.trim() }),
-    })
-    setNewProjectName('')
-    setCreatingProject(false)
-    router.refresh()
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newProjectName.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error('Failed to create project:', err)
+        return
+      }
+      setNewProjectName('')
+      setCreatingProject(false)
+      router.refresh()
+    } catch (err) {
+      console.error('Error creating project:', err)
+    }
   }
 
   async function deleteConversation(id: string, e: React.MouseEvent) {

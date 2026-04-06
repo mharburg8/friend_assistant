@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChatMessages } from './ChatMessages'
 import { ChatInput } from './ChatInput'
+import { ComputerUsePreview } from './ComputerUsePreview'
 import { ModeSelector } from '@/components/layout/ModeSelector'
 import { ProjectSelector } from './ProjectSelector'
 import type { Mode, Attachment } from '@/types/database'
@@ -12,6 +13,7 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   attachments?: Attachment[]
+  screenshot?: string
 }
 
 interface ChatInterfaceProps {
@@ -31,20 +33,29 @@ export function ChatInterface({
   const [isStreaming, setIsStreaming] = useState(false)
   const [conversationId, setConversationId] = useState(initialConversationId)
   const [mode, setMode] = useState<Mode | null>(initialMode as Mode | null)
+  const [computerScreenshot, setComputerScreenshot] = useState<string | null>(null)
   const router = useRouter()
   const abortControllerRef = useRef<AbortController | null>(null)
+  const conversationIdRef = useRef(initialConversationId)
+
+  // Keep ref in sync so cleanup can use latest value
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
 
   useEffect(() => {
     return () => {
-      if (conversationId && messages.length >= 4) {
+      const id = conversationIdRef.current
+      if (id && messages.length >= 4) {
         fetch('/api/conversations/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId }),
+          body: JSON.stringify({ conversationId: id }),
         }).catch(() => {})
       }
     }
-  }, [conversationId, messages.length])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const sendMessage = useCallback(async (content: string, attachmentIds: string[] = []) => {
     if (isStreaming) return
@@ -98,11 +109,14 @@ export function ChatInterface({
               break
             }
 
+            // Capture conversationId from ANY chunk (not just done)
+            if (data.conversationId && data.conversationId !== conversationIdRef.current) {
+              setConversationId(data.conversationId)
+              conversationIdRef.current = data.conversationId
+              router.replace(`/chat/${data.conversationId}`, { scroll: false })
+            }
+
             if (data.done) {
-              if (data.conversationId && data.conversationId !== conversationId) {
-                setConversationId(data.conversationId)
-                router.replace(`/chat/${data.conversationId}`, { scroll: false })
-              }
               if (data.generatedAttachments?.length > 0) {
                 setMessages(prev => {
                   const updated = [...prev]
@@ -117,6 +131,23 @@ export function ChatInterface({
                 })
               }
               break
+            }
+
+            // Handle computer use screenshots
+            if (data.screenshot) {
+              setComputerScreenshot(data.screenshot)
+              // Also attach to the last assistant message
+              setMessages(prev => {
+                const updated = [...prev]
+                const last = updated[updated.length - 1]
+                if (last.role === 'assistant') {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    screenshot: data.screenshot,
+                  }
+                }
+                return updated
+              })
             }
 
             if (data.text) {
@@ -167,14 +198,24 @@ export function ChatInterface({
         <ModeSelector currentMode={mode} onModeChange={setMode} />
         <ProjectSelector conversationId={conversationId} currentProjectId={initialProjectId} />
       </div>
-      <ChatMessages messages={messages} isStreaming={isStreaming} />
-      <ChatInput
-        onSend={sendMessage}
-        onStop={handleStop}
-        isStreaming={isStreaming}
-        disabled={isStreaming}
-        conversationId={conversationId}
-      />
+      <div className="flex flex-1 min-h-0">
+        <div className={`flex flex-col ${computerScreenshot ? 'flex-1' : 'w-full'}`}>
+          <ChatMessages messages={messages} isStreaming={isStreaming} />
+          <ChatInput
+            onSend={sendMessage}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+            disabled={isStreaming}
+            conversationId={conversationId}
+          />
+        </div>
+        {computerScreenshot && (
+          <ComputerUsePreview
+            screenshot={computerScreenshot}
+            onClose={() => setComputerScreenshot(null)}
+          />
+        )}
+      </div>
     </div>
   )
 }

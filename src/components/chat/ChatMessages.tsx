@@ -6,7 +6,7 @@ import { MessageBubble } from './MessageBubble'
 import type { Attachment } from '@/types/database'
 
 interface ChatMessagesProps {
-  messages: Array<{ role: 'user' | 'assistant'; content: string; attachments?: Attachment[] }>
+  messages: Array<{ role: 'user' | 'assistant'; content: string; attachments?: Attachment[]; screenshot?: string }>
   isStreaming: boolean
 }
 
@@ -40,6 +40,7 @@ export function ChatMessages({ messages, isStreaming }: ChatMessagesProps) {
             content={message.content}
             isStreaming={isStreaming && i === messages.length - 1 && message.role === 'assistant'}
             attachments={message.attachments}
+            screenshot={message.screenshot}
           />
         ))}
         <div ref={bottomRef} />

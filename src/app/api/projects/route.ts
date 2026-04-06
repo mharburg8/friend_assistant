@@ -49,7 +49,10 @@ export async function POST(request: Request) {
     .select()
     .single()
 
-  if (error) return Response.json({ error: 'Failed to create project' }, { status: 500 })
+  if (error) {
+    console.error('Supabase project insert error:', error)
+    return Response.json({ error: 'Failed to create project', detail: error.message }, { status: 500 })
+  }
 
   return Response.json(data)
 }
