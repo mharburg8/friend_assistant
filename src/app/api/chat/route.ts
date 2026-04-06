@@ -10,6 +10,7 @@ import { extractTextFromFile } from '@/lib/s3/extract-text'
 import { parseDocumentTags, getDocumentFormat } from '@/lib/documents/parse-tags'
 import { generateDocument } from '@/lib/documents/generate'
 import { parseComputerTasks, executeComputerTask } from '@/lib/computer-use/execute'
+import { parseJobEvals } from '@/lib/career-ops/parse-eval'
 import { tokenizeMessages, detokenizePII, resetTokenCounter } from '@/lib/security/pii-tokenizer'
 import { randomUUID } from 'crypto'
 import type { Attachment } from '@/types/database'
@@ -355,6 +356,29 @@ export async function POST(request: Request) {
                 conversationId: convoId,
               })}\n\n`))
             }
+          }
+        }
+
+        // Check for job evaluation tags
+        const { evals: jobEvals, cleanedResponse: postEvalResponse } = parseJobEvals(fullResponse)
+        if (jobEvals.length > 0) {
+          fullResponse = postEvalResponse
+          for (const ev of jobEvals) {
+            await supabase.from('job_applications').upsert(
+              {
+                user_id: user.id,
+                company: ev.company,
+                role: ev.role,
+                url: ev.url,
+                archetype: ev.archetype,
+                score: ev.score,
+                status: ev.status || 'evaluated',
+                notes: ev.notes,
+              },
+              { onConflict: 'user_id,company,role' }
+            ).then(({ error }) => {
+              if (error) console.error('Job eval save error:', error)
+            })
           }
         }
 
