@@ -9,6 +9,7 @@ import { getFileCategory } from '@/lib/s3/file-types'
 import { extractTextFromFile } from '@/lib/s3/extract-text'
 import { parseDocumentTags, getDocumentFormat } from '@/lib/documents/parse-tags'
 import { generateDocument } from '@/lib/documents/generate'
+import { parseComputerTasks, executeComputerTask } from '@/lib/computer-use/execute'
 import { tokenizeMessages, detokenizePII, resetTokenCounter } from '@/lib/security/pii-tokenizer'
 import { randomUUID } from 'crypto'
 import type { Attachment } from '@/types/database'
@@ -306,6 +307,55 @@ export async function POST(request: Request) {
           }
 
           fullResponse = cleanedResponse
+        }
+
+        // Check for computer use tasks
+        const { tasks: computerTasks, cleanedResponse: postComputerResponse } = parseComputerTasks(fullResponse)
+        if (computerTasks.length > 0) {
+          fullResponse = postComputerResponse
+
+          for (const task of computerTasks) {
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                text: '\n\n*Running computer task...*\n',
+                conversationId: convoId,
+              })}\n\n`))
+
+              const taskResult = await executeComputerTask(task)
+
+              let resultText = '\n\n**Computer Task Complete**\n'
+              resultText += taskResult.result || 'Task finished.'
+              resultText += '\n'
+
+              fullResponse = fullResponse.replace(
+                '[Executing computer task...]',
+                resultText
+              )
+
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                text: resultText,
+                conversationId: convoId,
+              })}\n\n`))
+
+              if (taskResult.final_screenshot) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  screenshot: `data:image/png;base64,${taskResult.final_screenshot}`,
+                  conversationId: convoId,
+                })}\n\n`))
+              }
+            } catch (err) {
+              const taskError = err as Error
+              const errorText = `\n\n*Computer task failed: ${taskError.message}*\n`
+              fullResponse = fullResponse.replace(
+                '[Executing computer task...]',
+                errorText
+              )
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                text: errorText,
+                conversationId: convoId,
+              })}\n\n`))
+            }
+          }
         }
 
         // Save assistant message

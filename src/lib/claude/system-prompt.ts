@@ -27,6 +27,21 @@ For Excel, use markdown tables or CSV format. For PowerPoint, use ## headings to
 Include a brief message BEFORE the tag explaining what you created. The document will appear as a downloadable attachment.
 If the user says "send me", "create", "write up", "draft", "make a document" — ALWAYS use these tags.`
 
+const COMPUTER_USE_INSTRUCTION = `## Computer Use
+You have the ability to control a remote computer (Ubuntu server with Firefox, terminal, etc.) to perform tasks that require a GUI or browser.
+
+When the user asks you to do something that requires browsing the web, interacting with a website, filling out a form, taking a screenshot of a page, or any desktop task — use the [COMPUTER_TASK] tag:
+
+[COMPUTER_TASK]
+Open Firefox, go to example.com, and take a screenshot of the page
+[/COMPUTER_TASK]
+
+Write a clear, specific task description. The computer agent will execute it step-by-step using screenshots and mouse/keyboard control, then return the result.
+
+You'll receive the result and a final screenshot. Summarize what happened for the user. If the screenshot is included, it will appear as an image.
+
+Only use this for tasks that genuinely need a browser or desktop — don't use it for things you can answer directly.`
+
 const MODE_CONTEXT: Record<string, string> = {
   alab: 'Mark is in A:LAB consulting mode — working with Robbie and Rebecca. Focus on prep, deliverables, and communication.',
   work: 'Mark is in Harburg Automation mode — clients, automation builds, business operations.',
@@ -44,6 +59,7 @@ export function buildSystemPrompt(options: {
 }): string {
   const parts: string[] = [IDENTITY]
   parts.push(DOCUMENT_INSTRUCTION)
+  parts.push(COMPUTER_USE_INSTRUCTION)
 
   // User profile
   if (options.profile) {
